@@ -1,0 +1,30 @@
+--- php-5.4.44/Zend/zend_alloc.c	2015-08-05 06:34:37.000000000 +0200
++++ php-5.4.44-sysalloc/Zend/zend_alloc.c	2022-06-22 10:49:12.787493736 +0200
+@@ -2419,6 +2419,8 @@
+ {
+ 	TSRMLS_FETCH();
+ 
++	return malloc(size);
++
+ 	if (UNEXPECTED(!AG(mm_heap)->use_zend_alloc)) {
+ 		return AG(mm_heap)->_malloc(size);
+ 	}
+@@ -2429,6 +2431,9 @@
+ {
+ 	TSRMLS_FETCH();
+ 
++	free(ptr);
++	return;
++
+ 	if (UNEXPECTED(!AG(mm_heap)->use_zend_alloc)) {
+ 		AG(mm_heap)->_free(ptr);
+ 		return;
+@@ -2440,6 +2445,8 @@
+ {
+ 	TSRMLS_FETCH();
+ 
++	return realloc(ptr, size);
++
+ 	if (UNEXPECTED(!AG(mm_heap)->use_zend_alloc)) {
+ 		return AG(mm_heap)->_realloc(ptr, size);
+ 	}

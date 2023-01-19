@@ -1,0 +1,55 @@
+--- php-7.0.7/Zend/zend_alloc.c	2016-05-25 15:13:18.000000000 +0200
++++ php-7.0.7-sysalloc/Zend/zend_alloc.c	2022-06-22 12:47:41.136531039 +0200
+@@ -2332,7 +2332,7 @@
+ #endif
+ }
+
+-#if !ZEND_DEBUG && (!defined(_WIN32) || defined(__clang__))
++#if 0 && !ZEND_DEBUG && (!defined(_WIN32) || defined(__clang__))
+ #undef _emalloc
+
+ #if ZEND_MM_CUSTOM
+@@ -2437,6 +2437,7 @@
+
+ ZEND_API void* ZEND_FASTCALL _emalloc(size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
++	return malloc(size);
+
+ #if ZEND_MM_CUSTOM
+ 	if (UNEXPECTED(AG(mm_heap)->use_custom_heap)) {
+@@ -2452,6 +2453,8 @@
+
+ ZEND_API void ZEND_FASTCALL _efree(void *ptr ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
++	free(ptr);
++	return;
+
+ #if ZEND_MM_CUSTOM
+ 	if (UNEXPECTED(AG(mm_heap)->use_custom_heap)) {
+@@ -2468,6 +2471,7 @@
+
+ ZEND_API void* ZEND_FASTCALL _erealloc(void *ptr, size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
++	return realloc(ptr, size);
+
+ 	if (UNEXPECTED(AG(mm_heap)->use_custom_heap)) {
+ 		if (ZEND_DEBUG && AG(mm_heap)->use_custom_heap == ZEND_MM_CUSTOM_HEAP_DEBUG) {
+@@ -2481,6 +2485,7 @@
+
+ ZEND_API void* ZEND_FASTCALL _erealloc2(void *ptr, size_t size, size_t copy_size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
++	return realloc(ptr, size);
+
+ 	if (UNEXPECTED(AG(mm_heap)->use_custom_heap)) {
+ 		if (ZEND_DEBUG && AG(mm_heap)->use_custom_heap == ZEND_MM_CUSTOM_HEAP_DEBUG) {
+--- php-7.0.7/Zend/zend_alloc.h	2016-05-25 15:13:18.000000000 +0200
++++ php-7.0.7-sysalloc/Zend/zend_alloc.h	2022-06-22 12:46:29.785697807 +0200
+@@ -88,7 +88,7 @@
+ #include "zend_alloc_sizes.h"
+
+ /* _emalloc() & _efree() specialization */
+-#if !ZEND_DEBUG && defined(HAVE_BUILTIN_CONSTANT_P)
++#if 0 && !ZEND_DEBUG && defined(HAVE_BUILTIN_CONSTANT_P)
+
+ # define _ZEND_BIN_ALLOCATOR_DEF(_num, _size, _elements, _pages, x, y) \
+ 	ZEND_API void* ZEND_FASTCALL _emalloc_  ## _size(void) ZEND_ATTRIBUTE_MALLOC;
