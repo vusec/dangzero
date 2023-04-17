@@ -1,0 +1,972 @@
+diff -urN glibc-2.31_base/elf/dl-map-segments.h glibc-2.31_pre_tls/elf/dl-map-segments.h
+--- glibc-2.31_base/elf/dl-map-segments.h	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/elf/dl-map-segments.h	2022-01-28 16:05:45.024133923 +0100
+@@ -70,10 +70,14 @@
+              unallocated.  Then jump into the normal segment-mapping loop to
+              handle the portion of the segment past the end of the file
+              mapping.  */
+-          if (__glibc_unlikely
+-              (__mprotect ((caddr_t) (l->l_addr + c->mapend),
++         // if (__glibc_unlikely
++          //    (__mprotect ((caddr_t) (l->l_addr + c->mapend),
++           //                loadcmds[nloadcmds - 1].mapstart - c->mapend,
++            //               PROT_NONE) < 0))
++if(__glibc_unlikely(PRE_TLS_INTERNAL_SYSCALL(mprotect, , 3, (caddr_t) (l->l_addr + c->mapend),
+                            loadcmds[nloadcmds - 1].mapstart - c->mapend,
+                            PROT_NONE) < 0))
++
+             return DL_MAP_SEGMENTS_ERROR_MPROTECT;
+         }
+ 
+diff -urN glibc-2.31_base/elf/setup-vdso.h glibc-2.31_pre_tls/elf/setup-vdso.h
+--- glibc-2.31_base/elf/setup-vdso.h	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/elf/setup-vdso.h	2022-01-25 14:02:10.000000000 +0100
+@@ -113,8 +113,10 @@
+       /* We have a prelinked DSO preloaded by the system.  */
+       GLRO(dl_sysinfo_map) = l;
+ # ifdef NEED_DL_SYSINFO
++#ifndef __x86_64__
+       if (GLRO(dl_sysinfo) == DL_SYSINFO_DEFAULT)
+ 	GLRO(dl_sysinfo) = GLRO(dl_sysinfo_dso)->e_entry + l->l_addr;
++#endif
+ # endif
+     }
+ #endif
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/access.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/access.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/access.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/access.c	2022-01-26 20:44:08.522638460 +0100
+@@ -24,7 +24,8 @@
+ __access (const char *file, int type)
+ {
+ #ifdef __NR_access
+-  return INLINE_SYSCALL_CALL (access, file, type);
++  return PRE_TLS_INLINE_SYSCALL (access, 2, file, type);
++  //return INLINE_SYSCALL_CALL (access, file, type);
+ #else
+   return INLINE_SYSCALL_CALL (faccessat, AT_FDCWD, file, type);
+ #endif
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/close_nocancel.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/close_nocancel.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/close_nocancel.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/close_nocancel.c	2022-01-26 20:45:26.306502151 +0100
+@@ -23,6 +23,7 @@
+ int
+ __close_nocancel (int fd)
+ {
+-  return INLINE_SYSCALL_CALL (close, fd);
++  return PRE_TLS_INLINE_SYSCALL (close, 1, fd);
++  //return INLINE_SYSCALL_CALL (close, fd);
+ }
+ libc_hidden_def (__close_nocancel)
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/dl-writev.h glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/dl-writev.h
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/dl-writev.h	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/dl-writev.h	2022-01-26 20:47:28.969293412 +0100
+@@ -34,5 +34,6 @@
+ _dl_writev (int fd, const struct iovec *iov, size_t niov)
+ {
+   INTERNAL_SYSCALL_DECL (err);
+-  INTERNAL_SYSCALL (writev, err, 3, fd, iov, niov);
++  PRE_TLS_INTERNAL_SYSCALL (writev, err, 3, fd, iov, niov);
++  //INTERNAL_SYSCALL (writev, err, 3, fd, iov, niov);
+ }
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/_exit.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/_exit.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/_exit.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/_exit.c	2022-01-26 20:48:19.062210090 +0100
+@@ -28,7 +28,8 @@
+   while (1)
+     {
+ #ifdef __NR_exit_group
+-      INLINE_SYSCALL (exit_group, 1, status);
++      PRE_TLS_INLINE_SYSCALL (exit_group, 1, status);
++      //INLINE_SYSCALL (exit_group, 1, status);
+ #endif
+       INLINE_SYSCALL (exit, 1, status);
+ 
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/mmap64.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/mmap64.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/mmap64.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/mmap64.c	2022-01-26 21:32:11.573026694 +0100
+@@ -56,7 +56,8 @@
+   return (void *) MMAP_CALL (mmap2, addr, len, prot, flags, fd,
+ 			     (off_t) (offset / MMAP2_PAGE_UNIT));
+ #else
+-  return (void *) MMAP_CALL (mmap, addr, len, prot, flags, fd, offset);
++  return (void *) PRE_TLS_INLINE_SYSCALL(mmap, 6, addr, len, prot, flags, fd, offset);
++  //return (void *) MMAP_CALL (mmap, addr, len, prot, flags, fd, offset);
+ #endif
+ }
+ weak_alias (__mmap64, mmap64)
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/open64_nocancel.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/open64_nocancel.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/open64_nocancel.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/open64_nocancel.c	2022-01-26 20:43:27.258712254 +0100
+@@ -42,8 +42,8 @@
+       va_end (arg);
+     }
+ 
+-  return INLINE_SYSCALL_CALL (openat, AT_FDCWD, file, oflag | EXTRA_OPEN_FLAGS,
+-			      mode);
++  return PRE_TLS_INLINE_SYSCALL (openat, 4, AT_FDCWD, file, oflag | EXTRA_OPEN_FLAGS, mode);
++//  return INLINE_SYSCALL_CALL (openat, AT_FDCWD, file, oflag | EXTRA_OPEN_FLAGS, mode);
+ }
+ 
+ hidden_def (__open64_nocancel)
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/pread64_nocancel.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/pread64_nocancel.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/pread64_nocancel.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/pread64_nocancel.c	2022-01-26 21:20:52.754299510 +0100
+@@ -27,6 +27,7 @@
+ ssize_t
+ __pread64_nocancel (int fd, void *buf, size_t count, off64_t offset)
+ {
+-  return INLINE_SYSCALL_CALL (pread64, fd, buf, count, SYSCALL_LL64_PRW (offset));
++  return PRE_TLS_INLINE_SYSCALL (pread64, 4, fd, buf, count, SYSCALL_LL64_PRW (offset));
++  //return INLINE_SYSCALL_CALL (pread64, fd, buf, count, SYSCALL_LL64_PRW (offset));
+ }
+ hidden_def (__pread64_nocancel)
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/read_nocancel.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/read_nocancel.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/read_nocancel.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/read_nocancel.c	2022-01-26 20:43:00.585760504 +0100
+@@ -23,6 +23,8 @@
+ ssize_t
+ __read_nocancel (int fd, void *buf, size_t nbytes)
+ {
+-  return INLINE_SYSCALL_CALL (read, fd, buf, nbytes);
++//  return pre_tls_syscall3(SYS_ify(read), , fd, buf, nbytes);
++//  return INLINE_SYSCALL_CALL (read, fd, buf, nbytes);
++  return PRE_TLS_INLINE_SYSCALL (read, 3, fd, buf, nbytes);
+ }
+ hidden_def (__read_nocancel)
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/wordsize-64/fxstat.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/wordsize-64/fxstat.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/wordsize-64/fxstat.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/wordsize-64/fxstat.c	2022-01-26 21:24:28.143883242 +0100
+@@ -32,7 +32,8 @@
+ __fxstat (int vers, int fd, struct stat *buf)
+ {
+   if (vers == _STAT_VER_KERNEL || vers == _STAT_VER_LINUX)
+-    return INLINE_SYSCALL (fstat, 2, fd, buf);
++    //return INLINE_SYSCALL (fstat, 2, fd, buf);
++    return PRE_TLS_INLINE_SYSCALL (fstat, 2, fd, buf);
+ 
+   __set_errno (EINVAL);
+   return -1;
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/wordsize-64/xstat.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/wordsize-64/xstat.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/wordsize-64/xstat.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/wordsize-64/xstat.c	2022-01-26 21:15:04.803019004 +0100
+@@ -32,7 +32,8 @@
+ __xstat (int vers, const char *name, struct stat *buf)
+ {
+   if (vers == _STAT_VER_KERNEL || vers == _STAT_VER_LINUX)
+-    return INLINE_SYSCALL (stat, 2, name, buf);
++//    return INLINE_SYSCALL (stat, 2, name, buf);
++    return PRE_TLS_INLINE_SYSCALL(stat, 2, name, buf);
+ 
+   __set_errno (EINVAL);
+   return -1;
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86/cpu-features.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86/cpu-features.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86/cpu-features.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86/cpu-features.c	2022-01-26 20:38:57.690226355 +0100
+@@ -25,8 +25,10 @@
+ {
+   unsigned long long cet_status[3];
+   INTERNAL_SYSCALL_DECL (err);
+-  if (INTERNAL_SYSCALL (arch_prctl, err, 2, ARCH_CET_STATUS,
+-			cet_status) == 0)
++//  if (INTERNAL_SYSCALL (arch_prctl, err, 2, ARCH_CET_STATUS, cet_status) == 0)
++//  if(pre_tls_syscall2(SYS_ify(arch_prctl), err, ARCH_CET_STATUS, cet_status) == 0)
++  if (PRE_TLS_INTERNAL_SYSCALL (arch_prctl, err, 2, ARCH_CET_STATUS, cet_status) == 0)
++
+     return cet_status[0];
+   return 0;
+ }
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/brk.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/brk.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/brk.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/brk.c	2022-01-26 20:38:05.970333056 +0100
+@@ -20,6 +20,7 @@
+ #include <unistd.h>
+ #include <sysdep.h>
+ 
++
+ /* This must be initialized data because commons can't have aliases.  */
+ void *__curbrk = 0;
+ 
+@@ -28,7 +29,10 @@
+ {
+   void *newbrk;
+ 
+-  __curbrk = newbrk = (void *) INLINE_SYSCALL (brk, 1, addr);
++  //__curbrk = newbrk = (void *) INLINE_SYSCALL (brk, 1, addr);
++  //__curbrk = newbrk = (void *) pre_tls_syscall1(SYS_ify(brk), , addr);
++  __curbrk = newbrk = (void *) PRE_TLS_INLINE_SYSCALL (brk, 1, addr);
++
+ 
+   if (newbrk < addr)
+     {
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/clone.S glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/clone.S
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/clone.S	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/clone.S	2022-01-26 10:36:51.000000000 +0100
+@@ -56,13 +56,23 @@
+ 	jz	SYSCALL_ERROR_LABEL
+ 
+ 	/* Insert the argument onto the new stack.  */
++#ifdef X86_64_USE_VSYSCALL
++	subq	$24,%rsi
++	movq	%rcx,16(%rsi)
++#else	
+ 	subq	$16,%rsi
+ 	movq	%rcx,8(%rsi)
++#endif
+ 
+ 	/* Save the function pointer.  It will be popped off in the
+ 	   child in the ebx frobbing below.  */
++#ifdef X86_64_USE_VSYSCALL
++	movq	%rdi,8(%rsi)
++	leaq	L(enter_kernel_end)(%rip),%r10
++	movq	%r10,0(%rsi)
++#else	   
+ 	movq	%rdi,0(%rsi)
+-
++#endif
+ 	/* Do the system call.  */
+ 	movq	%rdx, %rdi
+ 	movq	%r8, %rdx
+@@ -73,8 +83,9 @@
+ 	/* End FDE now, because in the child the unwind info will be
+ 	   wrong.  */
+ 	cfi_endproc;
+-	syscall
+-
++	ENTER_KERNEL
++	
++L(enter_kernel_end):
+ 	testq	%rax,%rax
+ 	jl	SYSCALL_ERROR_LABEL
+ 	jz	L(thread_start)
+@@ -96,7 +107,7 @@
+ 	/* Call exit with return value from function call. */
+ 	movq	%rax, %rdi
+ 	movl	$SYS_ify(exit), %eax
+-	syscall
++	ENTER_KERNEL
+ 	cfi_endproc;
+ 
+ 	cfi_startproc;
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h	1970-01-01 01:00:00.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h	2022-01-25 13:58:56.000000000 +0100
+@@ -0,0 +1,52 @@
++/* System-specific settings for dynamic linker code.  IA-64 version.
++   Copyright (C) 2003-2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#ifndef _LINUX_X86_64_DL_SYSDEP_H
++#define _LINUX_X86_64_DL_SYSDEP_H	1
++
++#include_next <dl-sysdep.h>
++
++/* Traditionally system calls have been made using break 0x100000.  A
++   second method was introduced which, if possible, will use the EPC
++   instruction.  To signal the presence and where to find the code the
++   kernel passes an AT_SYSINFO_EHDR pointer in the auxiliary vector to
++   the application.  */
++#define NEED_DL_SYSINFO	1
++#define USE_DL_SYSINFO	1
++
++#if defined NEED_DL_SYSINFO && !defined __ASSEMBLER__
++extern void _dl_sysinfo_syscall (void) attribute_hidden;
++# define DL_SYSINFO_DEFAULT (uintptr_t) _dl_sysinfo_syscall
++# define DL_SYSINFO_IMPLEMENTATION \
++  asm (".text\n\t"							      \
++       ".type _dl_sysinfo_syscall,@function\n\t"			      \
++       ".hidden _dl_sysinfo_syscall\n"					      \
++       CFI_STARTPROC "\n"						      \
++       "_dl_sysinfo_syscall:\n\t"					      \
++       "syscall;\n\t"							      \
++       "ret;\n\t"							      \
++       CFI_ENDPROC "\n"							      \
++       ".size _dl_sysinfo_syscall,.-_dl_sysinfo_syscall\n\t"		      \
++       ".previous");
++#endif
++
++/* _dl_argv cannot be attribute_relro, because _dl_start_user
++   might write into it after _dl_start returns.  */
++#define DL_ARGV_NOT_RELRO 1
++
++#endif	/* dl-sysdep.h */
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/getcontext.S glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/getcontext.S	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/getcontext.S	2022-01-26 10:37:59.000000000 +0100
+@@ -73,7 +73,7 @@
+ 	mov	%RSP_LP, %RSI_LP
+ 	movl	$ARCH_CET_STATUS, %edi
+ 	movl	$__NR_arch_prctl, %eax
+-	syscall
++	ENTER_KERNEL
+ 	testq	%rax, %rax
+ 	jz	L(continue_no_err)
+ 
+@@ -125,7 +125,7 @@
+ #endif
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	cmpq	$-4095, %rax		/* Check %rax for error.  */
+ 	jae	SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ 
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/setcontext.S glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/setcontext.S
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/setcontext.S	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/setcontext.S	2022-01-26 10:38:30.000000000 +0100
+@@ -44,7 +44,7 @@
+ 	movl	$SIG_SETMASK, %edi
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	/* Pop the pointer into RDX. The choice is arbitrary, but
+ 	   leaving RDI and RSI available for use later can avoid
+ 	   shuffling values.  */
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/sigaction.c glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/sigaction.c
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/sigaction.c	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/sigaction.c	2022-01-26 10:42:05.000000000 +0100
+@@ -32,6 +32,17 @@
+ 
+ #include <sysdeps/unix/sysv/linux/sigaction.c>
+ 
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++/* XXX : SYSINFO_OFFSET is hard-coded here! */
++#  define ENTER_KERNEL_NO_RETURN "jmp *%fs:0x20"
++# else
++#  define ENTER_KERNEL_NO_RETURN "jmp *_dl_sysinfo"
++# endif
++#else
++# define ENTER_KERNEL_NO_RETURN "syscall"
++#endif
++
+ /* NOTE: Please think twice before making any changes to the bits of
+    code below.  GDB needs some intimate knowledge about it to
+    recognize them as signal trampolines, and make backtraces through
+@@ -78,7 +89,7 @@
+    "	.type __" #name ",@function\n"					\
+    "__" #name ":\n"							\
+    "	movq $" #syscall ", %rax\n"					\
+-   "	syscall\n"							\
++   ENTER_KERNEL_NO_RETURN "\n"						\
+    ".LEND_" #name ":\n"							\
+    ".section .eh_frame,\"a\",@progbits\n"				\
+    ".LSTARTFRAME_" #name ":\n"						\
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/swapcontext.S glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/swapcontext.S	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/swapcontext.S	2022-01-26 10:42:54.000000000 +0100
+@@ -77,7 +77,7 @@
+ 	movl	$SIG_SETMASK, %edi
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	cmpq	$-4095, %rax		/* Check %rax for error.  */
+ 	jae	SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ 
+@@ -117,7 +117,7 @@
+ 	mov	%RSP_LP, %RSI_LP
+ 	movl	$ARCH_CET_STATUS, %edi
+ 	movl	$__NR_arch_prctl, %eax
+-	syscall
++	ENTER_KERNEL
+ 	testq	%rax, %rax
+ 	jz	L(continue_no_err)
+ 
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/syscall.S glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/syscall.S
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/syscall.S	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/syscall.S	2022-01-26 10:43:20.000000000 +0100
+@@ -34,7 +34,7 @@
+ 	movq %r8, %r10
+ 	movq %r9, %r8
+ 	movq 8(%rsp),%r9	/* arg6 is on the stack.  */
+-	syscall			/* Do the system call.  */
++	ENTER_KERNEL			/* Do the system call.  */
+ 	cmpq $-4095, %rax	/* Check %rax for error.  */
+ 	jae SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ 	ret			/* Return to caller.  */
+diff -urN glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/sysdep.h glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+--- glibc-2.31_base/sysdeps/unix/sysv/linux/x86_64/sysdep.h	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/unix/sysv/linux/x86_64/sysdep.h	2022-01-28 16:03:14.328601531 +0100
+@@ -33,6 +33,13 @@
+ #undef SYS_ify
+ #define SYS_ify(syscall_name)	__NR_##syscall_name
+ 
++#if defined USE_DL_SYSINFO \
++    && (!defined NOT_IN_libc || defined IS_IN_libpthread)
++# define X86_64_USE_VSYSCALL	1
++#else
++# undef X86_64_USE_VSYSCALL
++#endif
++
+ /* This is to help the old kernel headers where __NR_semtimedop is not
+    available.  */
+ #ifndef __NR_semtimedop
+@@ -74,6 +81,21 @@
+   SYSCALL_ERROR_HANDLER							      \
+   END (name)
+ 
++# undef	PRE_TLS_PSEUDO
++# define PRE_TLS_PSEUDO(name, syscall_name, args)				      \
++  .text;								      \
++  ENTRY (name)								      \
++    PRE_TLS_DO_CALL (syscall_name, args);					      \
++    cmpq $-4095, %rax;							      \
++    jae SYSCALL_ERROR_LABEL
++
++  
++# undef	PRE_TLS_DO_CALL
++# define PRE_TLS_DO_CALL(syscall_name, args)		\
++    DOARGS_##args				\
++    movl $SYS_ify (syscall_name), %eax;		\
++    syscall;
++
+ # undef	PSEUDO_NOERRNO
+ # define PSEUDO_NOERRNO(name, syscall_name, args) \
+   .text;								      \
+@@ -126,6 +148,18 @@
+   ret;
+ # endif	/* PIC */
+ 
++/* The original calling convention for system calls on Linux/x86-64 is
++   to use syscall.  */
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++#  define ENTER_KERNEL call *%fs:SYSINFO_OFFSET
++# else
++#  define ENTER_KERNEL call *_dl_sysinfo
++# endif
++#else
++# define ENTER_KERNEL syscall
++#endif
++
+ /* The Linux/x86-64 kernel expects the system call parameters in
+    registers according to the following table:
+ 
+@@ -162,11 +196,13 @@
+ 
+     Syscalls of more than 6 arguments are not supported.  */
+ 
++// fcg: this should be ENTER_KERNEL
++
+ # undef	DO_CALL
+ # define DO_CALL(syscall_name, args)		\
+     DOARGS_##args				\
+     movl $SYS_ify (syscall_name), %eax;		\
+-    syscall;
++    ENTER_KERNEL;
+ 
+ # define DOARGS_0 /* nothing */
+ # define DOARGS_1 /* nothing */
+@@ -177,6 +213,18 @@
+ # define DOARGS_6 DOARGS_5
+ 
+ #else	/* !__ASSEMBLER__ */
++
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++/* XXX : SYSINFO_OFFSET is hard-coded here! */
++#  define STR_ENTER_KERNEL "call *%%fs:0x20"
++# else
++#  define STR_ENTER_KERNEL "call *_dl_sysinfo"
++# endif
++#else
++# define STR_ENTER_KERNEL "syscall"
++#endif
++
+ /* Define a macro which expands inline into the wrapper code for a system
+    call.  */
+ # undef INLINE_SYSCALL
+@@ -225,6 +273,394 @@
+ #define INTERNAL_SYSCALL_NCS(number, err, nr, args...)			\
+ 	internal_syscall##nr (number, err, args)
+ 
++// fcg: macros for syscalls before TLS is set up
++# undef PRE_TLS_INLINE_SYSCALL
++# define PRE_TLS_INLINE_SYSCALL(name, nr, args...) \
++  ({									      \
++    unsigned long int resultvar = PRE_TLS_INTERNAL_SYSCALL (name, , nr, args);	      \
++    if (__glibc_unlikely (INTERNAL_SYSCALL_ERROR_P (resultvar, )))	      \
++      {									      \
++	__set_errno (INTERNAL_SYSCALL_ERRNO (resultvar, ));		      \
++	resultvar = (unsigned long int) -1;				      \
++      }									      \
++    (long int) resultvar; })
++
++#undef PRE_TLS_INTERNAL_SYSCALL
++#define PRE_TLS_INTERNAL_SYSCALL(name, err, nr, args...)			\
++	pre_tls_syscall##nr (SYS_ify (name), err, args)
++
++#undef pre_tls_syscall1
++#define pre_tls_syscall1(number, err, arg1)				\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++#undef pre_tls_syscall2
++#define pre_tls_syscall2(number, err, arg1, arg2)			\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1), "r" (_a2)				\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++#undef pre_tls_syscall4	 	
++#define pre_tls_syscall4(number, err, arg1, arg2, arg3, arg4)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4)		\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++#undef pre_tls_syscall3
++#define pre_tls_syscall3(number, err, arg1, arg2, arg3)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1), "r" (_a2), "r" (_a3)			\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++#undef pre_tls_syscall5
++#define pre_tls_syscall5(number, err, arg1, arg2, arg3, arg4, arg5)	\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5)								\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef pre_tls_syscall6
++#define pre_tls_syscall6(number, err, arg1, arg2, arg3, arg4, arg5, arg6) \
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg6, __arg6) = ARGIFY (arg6);			 	\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg6, _a6) asm ("r9") = __arg6;			\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "syscall\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5), "r" (_a6)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++// fcg: // for now, disable non-shared call to _dl_sysinfo
++# if defined X86_64_USE_VSYSCALL && defined SHARED
++//#  ifdef SHARED
++#undef internal_syscall0
++#define internal_syscall0(number, err, dummy...)			\
++({									\
++    unsigned long int resultvar;					\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo))							\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall1
++#define internal_syscall1(number, err, arg1)				\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall2
++#define internal_syscall2(number, err, arg1, arg2)			\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2)				\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall3
++#define internal_syscall3(number, err, arg1, arg2, arg3)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3)			\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall4
++#define internal_syscall4(number, err, arg1, arg2, arg3, arg4)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4)		\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall5
++#define internal_syscall5(number, err, arg1, arg2, arg3, arg4, arg5)	\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5)								\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall6
++#define internal_syscall6(number, err, arg1, arg2, arg3, arg4, arg5, arg6) \
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg6, __arg6) = ARGIFY (arg6);			 	\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg6, _a6) asm ("r9") = __arg6;			\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *%%fs:%P2\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5), "r" (_a6)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++/*#  else // not shared
++#undef internal_syscall0
++#define internal_syscall0(number, err, dummy...)			\
++({									\
++    unsigned long int resultvar;					\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo))							\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall1
++#define internal_syscall1(number, err, arg1)				\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall2
++#define internal_syscall2(number, err, arg1, arg2)			\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2)				\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall3
++#define internal_syscall3(number, err, arg1, arg2, arg3)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3)			\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall4
++#define internal_syscall4(number, err, arg1, arg2, arg3, arg4)		\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4)		\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall5
++#define internal_syscall5(number, err, arg1, arg2, arg3, arg4, arg5)	\
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5)								\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++
++#undef internal_syscall6
++#define internal_syscall6(number, err, arg1, arg2, arg3, arg4, arg5, arg6) \
++({									\
++    unsigned long int resultvar;					\
++    TYPEFY (arg6, __arg6) = ARGIFY (arg6);			 	\
++    TYPEFY (arg5, __arg5) = ARGIFY (arg5);			 	\
++    TYPEFY (arg4, __arg4) = ARGIFY (arg4);			 	\
++    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\
++    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\
++    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\
++    register TYPEFY (arg6, _a6) asm ("r9") = __arg6;			\
++    register TYPEFY (arg5, _a5) asm ("r8") = __arg5;			\
++    register TYPEFY (arg4, _a4) asm ("r10") = __arg4;			\
++    register TYPEFY (arg3, _a3) asm ("rdx") = __arg3;			\
++    register TYPEFY (arg2, _a2) asm ("rsi") = __arg2;			\
++    register TYPEFY (arg1, _a1) asm ("rdi") = __arg1;			\
++    asm volatile (							\
++    "call *_dl_sysinfo\n\t"							\
++    : "=a" (resultvar)							\
++    : "0" (number), "i" (offsetof (tcbhead_t, sysinfo)), "r" (_a1), "r" (_a2), "r" (_a3), "r" (_a4),		\
++      "r" (_a5), "r" (_a6)						\
++    : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
++    (long int) resultvar;						\
++})
++#  endif // end if shared*/
++# else // not use vsycall
+ #undef internal_syscall0
+ #define internal_syscall0(number, err, dummy...)			\
+ ({									\
+@@ -352,6 +788,7 @@
+     : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);			\
+     (long int) resultvar;						\
+ })
++#endif // end if use vsycall
+ 
+ # undef INTERNAL_SYSCALL_ERROR_P
+ # define INTERNAL_SYSCALL_ERROR_P(val, err) \
+diff -urN glibc-2.31_base/sysdeps/x86_64/nptl/tcb-offsets.sym glibc-2.31_pre_tls/sysdeps/x86_64/nptl/tcb-offsets.sym
+--- glibc-2.31_base/sysdeps/x86_64/nptl/tcb-offsets.sym	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/x86_64/nptl/tcb-offsets.sym	2022-01-26 10:31:38.000000000 +0100
+@@ -12,6 +12,7 @@
+ MULTIPLE_THREADS_OFFSET	offsetof (tcbhead_t, multiple_threads)
+ POINTER_GUARD		offsetof (tcbhead_t, pointer_guard)
+ VGETCPU_CACHE_OFFSET	offsetof (tcbhead_t, vgetcpu_cache)
++SYSINFO_OFFSET		offsetof (tcbhead_t, sysinfo)
+ FEATURE_1_OFFSET	offsetof (tcbhead_t, feature_1)
+ SSP_BASE_OFFSET		offsetof (tcbhead_t, ssp_base)
+ 
+diff -urN glibc-2.31_base/sysdeps/x86_64/nptl/tls.h glibc-2.31_pre_tls/sysdeps/x86_64/nptl/tls.h
+--- glibc-2.31_base/sysdeps/x86_64/nptl/tls.h	2020-02-01 12:52:50.000000000 +0100
++++ glibc-2.31_pre_tls/sysdeps/x86_64/nptl/tls.h	2022-01-26 16:32:32.752959454 +0100
+@@ -19,6 +19,7 @@
+ #ifndef _TLS_H
+ #define _TLS_H	1
+ 
++#include <dl-sysdep.h>
+ #ifndef __ASSEMBLER__
+ # include <asm/prctl.h>	/* For ARCH_SET_FS.  */
+ # include <stdbool.h>
+@@ -144,6 +145,13 @@
+ # define GET_DTV(descr) \
+   (((tcbhead_t *) (descr))->dtv)
+ 
++//#define THREAD_SELF_SYSINFO	THREAD_GETMEM (THREAD_SELF, header.sysinfo)
++//#define THREAD_SYSINFO(pd)	((pd)->header.sysinfo)
++
++#ifdef NEED_DL_SYSINFO
++#define SETUP_THREAD_SYSINFO(pd) ((pd)->header.sysinfo = THREAD_GETMEM (THREAD_SELF, header.sysinfo))
++#define CHECK_THREAD_SYSINFO(pd) assert ((pd)->header.sysinfo == THREAD_GETMEM (THREAD_SELF, header.sysinfo))
++#endif
+ 
+ /* Code to initially initialize the thread pointer.  This might need
+    special attention since 'errno' is not yet available and if the
+@@ -151,6 +159,31 @@
+ 
+    We have to make the syscall for both uses of the macro since the
+    address might be (and probably is) different.  */
++
++#if defined NEED_DL_SYSINFO
++# define TLS_INIT_TP(thrdescr) \
++  ({ void *_thrdescr = (thrdescr);					      \
++     tcbhead_t *_head = _thrdescr;					      \
++     int _result;							      \
++									      \
++     _head->tcb = _thrdescr;						      \
++     /* For now the thread descriptor is at the same address.  */	      \
++     _head->self = _thrdescr;						      \
++									      \
++     _head->sysinfo = GLRO(dl_sysinfo);					      \
++									      \
++     /* It is a simple syscall to set the %fs value for the thread.  */	      \
++     asm volatile ("callq *%4"						      \
++		   : "=a" (_result)					      \
++		   : "0" ((unsigned long int) __NR_arch_prctl),		      \
++		     "D" ((unsigned long int) ARCH_SET_FS),		      \
++		     "S" (_thrdescr),					      \
++		     "m" (_head->sysinfo)				      \
++		   : "memory", "cc", "r11", "cx");			      \
++									      \
++    _result ? "cannot set %fs base address for thread-local storage" : 0;     \
++  })
++#else   
+ # define TLS_INIT_TP(thrdescr) \
+   ({ void *_thrdescr = (thrdescr);					      \
+      tcbhead_t *_head = _thrdescr;					      \
+@@ -170,6 +203,7 @@
+ 									      \
+     _result ? "cannot set %fs base address for thread-local storage" : 0;     \
+   })
++#endif
+ 
+ # define TLS_DEFINE_INIT_TP(tp, pd) void *tp = (pd)
+ 
